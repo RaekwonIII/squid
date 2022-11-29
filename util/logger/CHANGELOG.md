@@ -1,6 +1,20 @@
 # Change Log - @subsquid/logger
 
-This log was last generated on Wed, 17 Aug 2022 17:33:52 GMT and should not be manually modified.
+This log was last generated on Sun, 27 Nov 2022 18:43:31 GMT and should not be manually modified.
+
+## 0.3.0
+Sun, 27 Nov 2022 18:43:31 GMT
+
+### Minor changes
+
+- change pretty print format: use yaml style only for top-level attributes, use compact json for other properties
+
+## 0.2.0
+Sat, 15 Oct 2022 11:43:02 GMT
+
+### Minor changes
+
+- handle maps and sets in log records
 
 ## 0.1.0
 Wed, 17 Aug 2022 17:33:52 GMT

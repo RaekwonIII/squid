@@ -1,6 +1,59 @@
 # Change Log - @subsquid/substrate-ingest
 
-This log was last generated on Thu, 01 Sep 2022 09:27:14 GMT and should not be manually modified.
+This log was last generated on Sun, 27 Nov 2022 18:43:31 GMT and should not be manually modified.
+
+## 1.3.4
+Sun, 27 Nov 2022 18:43:31 GMT
+
+_Version update only_
+
+## 1.3.3
+Sun, 06 Nov 2022 18:24:20 GMT
+
+_Version update only_
+
+## 1.3.2
+Fri, 28 Oct 2022 12:04:58 GMT
+
+_Version update only_
+
+## 1.3.1
+Sat, 15 Oct 2022 11:43:02 GMT
+
+_Version update only_
+
+## 1.3.0
+Fri, 14 Oct 2022 13:59:14 GMT
+
+### Minor changes
+
+- support polkadotjs types bundles
+
+## 1.2.2
+Fri, 30 Sep 2022 14:01:22 GMT
+
+### Patches
+
+- fix naming collision for EVM.ExecutedFailed
+
+## 1.2.1
+Wed, 28 Sep 2022 07:59:35 GMT
+
+### Patches
+
+- fix naming collision between Acala EVM and frontier
+
+## 1.2.0
+Thu, 15 Sep 2022 20:54:52 GMT
+
+### Minor changes
+
+- Index `EVM.Executed` and `EVM.ExecutedFailed` events from Acala network
+- save missing metadata at the start of processing (resolves #78)
+
+### Patches
+
+- handle `ChargeTransactionPayment` signed extension from Nikau network
 
 ## 1.1.1
 Thu, 01 Sep 2022 09:27:14 GMT

@@ -1,9 +1,9 @@
-import type {Entity, Enum, JsonObject, Model, Prop, Union} from "@subsquid/openreader/lib/model"
-import {unexpectedCase} from "@subsquid/util-internal"
-import {OutDir, Output} from "@subsquid/util-internal-code-printer"
-import {toCamelCase} from "@subsquid/util-naming"
-import assert from "assert"
-import * as path from "path"
+import type {Entity, Enum, JsonObject, Model, Prop, Union} from '@subsquid/openreader/lib/model'
+import {unexpectedCase} from '@subsquid/util-internal'
+import {OutDir, Output} from '@subsquid/util-internal-code-printer'
+import {toCamelCase} from '@subsquid/util-naming'
+import assert from 'assert'
+import * as path from 'path'
 
 
 export function generateOrmModels(model: Model, dir: OutDir): void {
@@ -59,17 +59,32 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                             out.line('@PrimaryColumn_()')
                         } else {
                             addIndexAnnotation(entity, key, imports, out)
-                            if (prop.type.name === 'BigInt') {
-                                imports.useMarshal()
-                                out.line(
-                                    `@Column_("numeric", {transformer: marshal.bigintTransformer, nullable: ${prop.nullable}})`
-                                )
-                            } else {
-                                out.line(
-                                    `@Column_("${getDbType(prop.type.name)}", {nullable: ${
-                                        prop.nullable
-                                    }})`
-                                )
+                            switch (prop.type.name) {
+                                case 'BigInt':
+                                    imports.useMarshal()
+                                    out.line(
+                                        `@Column_("${getDbType(prop.type.name)}", {transformer: marshal.bigintTransformer, nullable: ${prop.nullable}})`
+                                    )
+                                    break
+                                case 'BigDecimal':
+                                    imports.useMarshal()
+                                    out.line(
+                                        `@Column_("${getDbType(prop.type.name)}", {transformer: marshal.bigdecimalTransformer, nullable: ${prop.nullable}})`
+                                    )
+                                    break
+                                case 'Float':
+                                    imports.useMarshal()
+                                    out.line(
+                                        `@Column_("${getDbType(prop.type.name)}", {transformer: marshal.floatTransformer, nullable: ${prop.nullable}})`
+                                    )
+                                    break
+                                default:
+                                    out.line(
+                                        `@Column_("${getDbType(prop.type.name)}", {nullable: ${
+                                            prop.nullable
+                                        }})`
+                                    )
+                                    break
                             }
                         }
                         break
@@ -87,7 +102,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                             imports.useTypeorm('OneToOne', 'Index', 'JoinColumn')
                             out.line(`@Index_({unique: true})`)
                             out.line(
-                                `@OneToOne_(() => ${prop.type.foreignEntity}, {nullable: false})`
+                                `@OneToOne_(() => ${prop.type.entity}, {nullable: false})`
                             )
                             out.line(`@JoinColumn_()`)
                         } else {
@@ -97,7 +112,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                             }
                             // Make foreign entity references always nullable
                             out.line(
-                                `@ManyToOne_(() => ${prop.type.foreignEntity}, {nullable: true})`
+                                `@ManyToOne_(() => ${prop.type.entity}, {nullable: true})`
                             )
                         }
                         break
@@ -118,20 +133,23 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                             `@Column_("jsonb", {transformer: {to: obj => ${marshalToJson(
                                 prop,
                                 'obj'
-                            )}, from: obj => ${marshalFromJson(prop, 'obj')}}, nullable: ${
+                            )}, from: obj => ${marshalFromJson({...prop, nullable: true}, 'obj')}}, nullable: ${
                                 prop.nullable
                             }})`
                         )
                         break
                     case 'list':
                         switch(prop.type.item.type.kind) {
-                            case 'scalar':
+                            case 'scalar': {
+                                let scalar = prop.type.item.type.name
+                                if (scalar == 'BigInt' || scalar == 'BigDecimal') {
+                                    throw new Error(`Property ${name}.${key} has unsupported type: can't generate code for native ${scalar} arrays.`)
+                                }
                                 out.line(
-                                    `@Column_("${getDbType(
-                                        prop.type.item.type.name
-                                    )}", {array: true, nullable: ${prop.nullable}})`
+                                    `@Column_("${getDbType(scalar)}", {array: true, nullable: ${prop.nullable}})`
                                 )
                                 break
+                            }
                             case 'enum':
                                 out.line(
                                     `@Column_("varchar", {length: ${getEnumMaxLength(
@@ -149,7 +167,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                                         prop,
                                         'obj'
                                     )}, from: obj => ${marshalFromJson(
-                                        prop,
+                                        {...prop, nullable: true},
                                         'obj'
                                     )}}, nullable: ${prop.nullable}})`
                                 )
@@ -161,7 +179,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                     default:
                         throw unexpectedCase((prop.type as any).kind)
                 }
-                out.line(`${key}!: ${getPropJsType('entity', prop)}`)
+                out.line(`${key}!: ${getPropJsType(imports, 'entity', prop)}`)
             }
         })
         out.write()
@@ -181,6 +199,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
             case 'DateTime':
                 return 'timestamp with time zone'
             case 'BigInt':
+            case 'BigDecimal':
                 return 'numeric'
             case 'Bytes':
                 return 'bytea'
@@ -207,7 +226,7 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
             for (const key in object.properties) {
                 const prop = object.properties[key]
                 importReferencedModel(imports, prop)
-                out.line(`private _${key}!: ${getPropJsType('object', prop)}`)
+                out.line(`private _${key}!: ${getPropJsType(imports, 'object', prop)}`)
             }
             out.line()
             out.block(
@@ -226,14 +245,14 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                 const prop = object.properties[key]
                 out.line()
                 printComment(prop, out)
-                out.block(`get ${key}(): ${getPropJsType('object', prop)}`, () => {
+                out.block(`get ${key}(): ${getPropJsType(imports, 'object', prop)}`, () => {
                     if (!prop.nullable) {
                         out.line(`assert(this._${key} != null, 'uninitialized access')`)
                     }
                     out.line(`return this._${key}`)
                 })
                 out.line()
-                out.block(`set ${key}(value: ${getPropJsType('object', prop)})`, () => {
+                out.block(`set ${key}(value: ${getPropJsType(imports, 'object', prop)})`, () => {
                     out.line(`this._${key} = value`)
                 })
             }
@@ -261,8 +280,6 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
                 imports.useModel(prop.type.name)
                 break
             case 'fk':
-                imports.useModel(prop.type.foreignEntity)
-                break
             case 'lookup':
             case 'list-lookup':
                 imports.useModel(prop.type.entity)
@@ -384,11 +401,14 @@ export function generateOrmModels(model: Model, dir: OutDir): void {
 }
 
 
-function getPropJsType(owner: 'entity' | 'object', prop: Prop): string {
+function getPropJsType(imports: ImportRegistry, owner: 'entity' | 'object', prop: Prop): string {
     let type: string
     switch(prop.type.kind) {
         case 'scalar':
             type = getScalarJsType(prop.type.name)
+            if (type == 'BigDecimal') {
+                imports.useBigDecimal()
+            }
             break
         case 'enum':
         case 'object':
@@ -397,7 +417,7 @@ function getPropJsType(owner: 'entity' | 'object', prop: Prop): string {
             break
         case 'fk':
             if (owner === 'entity') {
-                type = prop.type.foreignEntity
+                type = prop.type.entity
             } else {
                 type = 'string'
             }
@@ -409,7 +429,7 @@ function getPropJsType(owner: 'entity' | 'object', prop: Prop): string {
             type = prop.type.entity + '[]'
             break
         case 'list':
-            type = getPropJsType('object', prop.type.item)
+            type = getPropJsType(imports, 'object', prop.type.item)
             if (type.indexOf('|')) {
                 type = `(${type})[]`
             } else {
@@ -440,6 +460,8 @@ function getScalarJsType(typeName: string): string {
             return 'Date'
         case 'BigInt':
             return 'bigint'
+        case 'BigDecimal':
+            return 'BigDecimal'
         case 'Bytes':
             return 'Uint8Array'
         case 'JSON':
@@ -503,10 +525,10 @@ class ImportRegistry {
     private typeorm = new Set<string>()
     private model = new Set<string>()
     private marshal = false
+    private bigdecimal = false
     private assert = false
 
-    constructor(private owner: string) {
-    }
+    constructor(private owner: string) {}
 
     useTypeorm(...names: string[]): void {
         names.forEach((name) => this.typeorm.add(name))
@@ -523,11 +545,18 @@ class ImportRegistry {
         this.marshal = true
     }
 
+    useBigDecimal() {
+        this.bigdecimal = true
+    }
+
     useAssert() {
         this.assert = true
     }
 
     render(model: Model, out: Output): void {
+        if (this.bigdecimal) {
+            out.line(`import {BigDecimal} from "@subsquid/big-decimal"`)
+        }
         if (this.assert) {
             out.line('import assert from "assert"')
         }

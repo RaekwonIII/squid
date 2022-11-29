@@ -1,12 +1,22 @@
-import {createLogger, Logger} from "@subsquid/logger"
-import {getOldTypesBundle, OldTypesBundle, readOldTypesBundle} from "@subsquid/substrate-metadata"
-import {last, runProgram} from "@subsquid/util-internal"
-import assert from "assert"
-import {applyRangeBound, Batch, mergeBatches} from "../batch/generic"
-import {PlainBatchRequest} from "../batch/request"
-import {Chain} from "../chain"
-import {BlockData} from "../ingest"
-import type {BlockRangeOption, EvmLogOptions} from "../interfaces/dataHandlers"
+import {createLogger, Logger} from '@subsquid/logger'
+import {
+    getOldTypesBundle,
+    OldSpecsBundle,
+    OldTypes,
+    OldTypesBundle,
+    readOldTypesBundle
+} from '@subsquid/substrate-metadata'
+import {getTypesFromBundle} from '@subsquid/substrate-metadata/lib/old/typesBundle'
+import {
+    eliminatePolkadotjsTypesBundle,
+    PolkadotjsTypesBundle
+} from '@subsquid/substrate-metadata/lib/old/typesBundle-polkadotjs'
+import {def, last, runProgram} from '@subsquid/util-internal'
+import {applyRangeBound, Batch, mergeBatches} from '../batch/generic'
+import {PlainBatchRequest} from '../batch/request'
+import {Chain} from '../chain'
+import {BlockData} from '../ingest'
+import type {AcalaEvmExecutedOptions, BlockRangeOption, EvmLogOptions} from '../interfaces/dataHandlers'
 import type {
     AddCallItem,
     AddEventItem,
@@ -17,12 +27,12 @@ import type {
     EventItem,
     MayBeDataSelection,
     NoDataSelection
-} from "../interfaces/dataSelection"
-import type {Database} from "../interfaces/db"
-import type {SubstrateBlock} from "../interfaces/substrate"
-import {Range} from "../util/range"
-import {DataSource} from "./handlerProcessor"
-import {Config, Options, Runner} from "./runner"
+} from '../interfaces/dataSelection'
+import type {Database} from '../interfaces/db'
+import type {SubstrateBlock} from '../interfaces/substrate'
+import {Range} from '../util/range'
+import {DataSource} from './handlerProcessor'
+import {Config, Options, Runner} from './runner'
 
 
 /**
@@ -82,7 +92,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
     private batches: Batch<PlainBatchRequest>[] = []
     private options: Options = {}
     private src?: DataSource
-    private typesBundle?: OldTypesBundle
+    private typesBundle?: OldTypesBundle | OldSpecsBundle
     private running = false
 
     private add(request: PlainBatchRequest, range?: Range): void {
@@ -408,6 +418,85 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
     }
 
     /**
+     * Similar to {@link .addEvent},
+     * but requests `EVM.Executed` events containing logs from particular contract
+     * with an option to filter them by log address and topic.
+     *
+     * @example
+     * // request all `EVM.Executed` events from contract `0xae9d7fe007b3327aa64a32824aaac52c42a6e624`
+     * processor.addAcalaEvmExecuted('0xae9d7fe007b3327aa64a32824aaac52c42a6e624')
+     *
+     * // request all `EVM.Executed` events containing ERC20 transfers from contract `0x0000000000000000000100000000000000000080`
+     * processor.addAcalaEvmExecuted('*', {
+     *     logs: [{
+     *         contract: '0x0000000000000000000100000000000000000080',
+     *         filter: ['0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef']
+     *     }]
+     * })
+     *
+     * // request the same data from multiple contracts at once
+     * processor.addAcalaEvmExecuted([
+     *     '0xae9d7fe007b3327aa64a32824aaac52c42a6e624',
+     *     '0x1aafb0d5aab9ffbe09d4d30c9fd90d695c4f0881',
+     * ])
+     */
+    addAcalaEvmExecuted(
+        contractAddress: string | string[],
+        options?: AcalaEvmExecutedOptions & NoDataSelection
+    ): SubstrateBatchProcessor<AddEventItem<Item, EventItem<"EVM.Executed", true>>>
+
+    addAcalaEvmExecuted<R extends EventDataRequest>(
+        contractAddress: string | string[],
+        options: AcalaEvmExecutedOptions & DataSelection<R>
+    ): SubstrateBatchProcessor<AddEventItem<Item, EventItem<"EVM.Executed", R>>>
+
+    addAcalaEvmExecuted(
+        contractAddress: string | string[],
+        options?: AcalaEvmExecutedOptions & MayBeDataSelection<EventDataRequest>
+    ): SubstrateBatchProcessor<any> {
+        this.assertNotRunning()
+        let req = new PlainBatchRequest()
+        let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
+        req.acalaEvmExecuted.push(...contractAddresses.map((contractAddress) => ({
+            contract: contractAddress.toLowerCase(),
+            logs: options?.logs,
+            data: options?.data
+        })))
+        this.add(req, options?.range)
+        return this
+    }
+
+    /**
+     * Similar to {@link .addAcalaEvmExecuted},
+     * but requests `EVM.ExecutedFailed` events from failed EVM calls (`EVM.call`, `EVM.eth_call`, etc).
+     */
+    addAcalaEvmExecutedFailed(
+        contractAddress: string | string[],
+        options?: AcalaEvmExecutedOptions & NoDataSelection
+    ): SubstrateBatchProcessor<AddEventItem<Item, EventItem<"EVM.ExecutedFailed", true>>>
+
+    addAcalaEvmExecutedFailed<R extends EventDataRequest>(
+        contractAddress: string | string[],
+        options: AcalaEvmExecutedOptions & DataSelection<R>
+    ): SubstrateBatchProcessor<AddEventItem<Item, EventItem<"EVM.ExecutedFailed", R>>>
+
+    addAcalaEvmExecutedFailed(
+        contractAddress: string | string[],
+        options?: AcalaEvmExecutedOptions & MayBeDataSelection<EventDataRequest>
+    ): SubstrateBatchProcessor<any> {
+        this.assertNotRunning()
+        let req = new PlainBatchRequest()
+        let contractAddresses = Array.isArray(contractAddress) ? contractAddress : [contractAddress]
+        req.acalaEvmExecutedFailed.push(...contractAddresses.map((contractAddress) => ({
+            contract: contractAddress.toLowerCase(),
+            logs: options?.logs,
+            data: options?.data
+        })))
+        this.add(req, options?.range)
+        return this
+    }
+
+    /**
      * By default, the processor will fetch only blocks
      * which contain requested items. This method
      * modifies such behaviour to fetch all chain blocks.
@@ -449,15 +538,17 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
     }
 
     /**
-     * Sets the maximum number of blocks which can be fetched
-     * from the data source in a single request.
+     *  Used to set the maximum number of blocks which could be fetched
+     *  from the data source in a single request.
      *
-     * The default is 100.
+     *  Now this setting has no effect.
+     *
+     *  The amount of returned data is determined by the datasource.
+     *
+     * @deprecated
      */
     setBatchSize(size: number): this {
-        assert(size > 0)
-        this.assertNotRunning()
-        this.options.batchSize = size
+        this.getLogger().warn('.setBatchSize() is deprecated and has no effect')
         return this
     }
 
@@ -483,20 +574,15 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      * metadata version below 14 and only if we don't have built-in
      * support for the chain in question.
      *
-     * Don't confuse this setting with types bundle from polkadot.js.
-     * Although those two are similar in purpose and structure,
-     * they are not compatible.
+     * Subsquid project has its own types bundle format,
+     * however, most of polkadotjs types bundles will work as well.
      *
-     * Types bundle can be specified in 3 different ways:
+     * Types bundle can be specified in 2 different ways:
      *
-     * 1. as a name of a known chain
-     * 2. as a name of a JSON file structured as {@link OldTypesBundle}
-     * 3. as an {@link OldTypesBundle} object
+     * 1. as a name of a JSON file
+     * 2. as an {@link OldTypesBundle} or {@link OldSpecsBundle} or {@link PolkadotjsTypesBundle} object
      *
      * @example
-     * // known chain
-     * processor.setTypesBundle('kusama')
-     *
      * // A path to a JSON file resolved relative to `cwd`.
      * processor.setTypesBundle('typesBundle.json')
      *
@@ -507,12 +593,12 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      *     }
      * })
      */
-    setTypesBundle(bundle: string | OldTypesBundle): this {
+    setTypesBundle(bundle: string | OldTypesBundle | OldSpecsBundle | PolkadotjsTypesBundle): this {
         this.assertNotRunning()
         if (typeof bundle == 'string') {
             this.typesBundle = getOldTypesBundle(bundle) || readOldTypesBundle(bundle)
         } else {
-            this.typesBundle = bundle
+            this.typesBundle = eliminatePolkadotjsTypesBundle(bundle)
         }
         return this
     }
@@ -523,10 +609,12 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         }
     }
 
-    private getTypesBundle(specName: string, specVersion: number): OldTypesBundle {
+    private getTypes(specName: string, specVersion: number): OldTypes {
         let bundle = this.typesBundle || getOldTypesBundle(specName)
-        if (bundle) return bundle
-        throw new Error(`Types bundle is required for ${specName}@${specVersion}. Provide it via .setTypesBundle()`)
+        if (bundle == null) throw new Error(
+            `Types bundle is required for ${specName}@${specVersion}. Provide it via .setTypesBundle() or .setPolkadotjsTypesBundle()`
+        )
+        return getTypesFromBundle(bundle, specVersion, specName)
     }
 
     private getArchiveEndpoint(): string {
@@ -545,6 +633,11 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
         return url
     }
 
+    @def
+    private getLogger(): Logger {
+        return createLogger('sqd:processor')
+    }
+
     /**
      * Run data processing.
      *
@@ -558,7 +651,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
      * @param handler - The data handler, see {@link BatchContext} for an API available to the handler.
      */
     run<Store>(db: Database<Store>, handler: (ctx: BatchContext<Store, Item>) => Promise<void>): void {
-        let logger = createLogger('sqd:processor')
+        let logger = this.getLogger()
         this.running = true
         runProgram(async () => {
             let batches = mergeBatches(this.batches, (a, b) => a.merge(b))
@@ -567,7 +660,7 @@ export class SubstrateBatchProcessor<Item extends {kind: string, name: string} =
                 getDatabase: () => db,
                 getArchiveEndpoint: () => this.getArchiveEndpoint(),
                 getChainEndpoint: () => this.getChainEndpoint(),
-                getTypesBundle: this.getTypesBundle.bind(this),
+                getTypes: this.getTypes.bind(this),
                 getLogger: () => logger,
                 getOptions: () => this.options,
                 createBatches(blockRange: Range): Batch<PlainBatchRequest>[] {

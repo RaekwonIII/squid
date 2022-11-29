@@ -1,6 +1,42 @@
 # Change Log - @subsquid/substrate-typegen
 
-This log was last generated on Wed, 17 Aug 2022 17:33:52 GMT and should not be manually modified.
+This log was last generated on Sun, 27 Nov 2022 18:43:31 GMT and should not be manually modified.
+
+## 1.5.1
+Sun, 27 Nov 2022 18:43:31 GMT
+
+_Version update only_
+
+## 1.5.0
+Sun, 06 Nov 2022 18:24:20 GMT
+
+### Minor changes
+
+- decode `Option<Option<T>>` to `Option<T | undefined>`
+
+## 1.4.2
+Fri, 28 Oct 2022 12:04:58 GMT
+
+_Version update only_
+
+## 1.4.1
+Sat, 15 Oct 2022 11:43:02 GMT
+
+_Version update only_
+
+## 1.4.0
+Fri, 14 Oct 2022 13:59:14 GMT
+
+### Minor changes
+
+- support polkadotjs types bundles
+
+## 1.3.0
+Wed, 07 Sep 2022 20:52:29 GMT
+
+### Minor changes
+
+- support `storage.getAll...()` API
 
 ## 1.2.2
 Wed, 17 Aug 2022 17:33:52 GMT

@@ -15,8 +15,11 @@ migration:
 
 
 typegen:
-	@npx squid-evm-typegen --abi erc721.json --output src/erc721.ts
-	@npx squid-evm-typegen --abi raresama.json --output src/raresama.ts
+	@npx squid-evm-typegen src/abi \
+		erc721.json \
+		0xBB9bc244D798123fDe783fCc1C72d3Bb8C189413#something \
+		--multicall \
+		--clean
 
 
 codegen:

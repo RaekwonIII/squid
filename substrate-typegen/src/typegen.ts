@@ -6,6 +6,7 @@ import {
     getOldTypesBundle,
     getTypeHash,
     isPreV14,
+    OldSpecsBundle,
     OldTypes,
     OldTypesBundle,
     QualifiedName,
@@ -27,7 +28,7 @@ import {groupBy, isEmptyVariant, upperCaseFirst} from "./util"
 export interface TypegenOptions {
     outDir: string
     specVersions: SpecVersion[]
-    typesBundle?: OldTypesBundle
+    typesBundle?: OldTypesBundle | OldSpecsBundle
     events?: string[] | boolean
     calls?: string[] | boolean
     storage?: string[] | boolean
@@ -57,7 +58,7 @@ export class Typegen {
             if (ifs.isEmpty()) return
             let fileName = toCamelCase(this.getVersionName(v)) + '.ts'
             let file = this.dir.file(fileName)
-            file.line(`import type {Result} from './support'`)
+            file.line(`import type {Result, Option} from './support'`)
             ifs.generate(file)
             file.write()
         })
@@ -81,7 +82,7 @@ export class Typegen {
         let names = Array.from(items.keys()).sort()
 
         out.line(`import assert from 'assert'`)
-        out.line(`import {Chain, ChainContext, ${fix}Context, ${fix}, Result} from './support'`)
+        out.line(`import {Chain, ChainContext, ${fix}Context, ${fix}, Result, Option} from './support'`)
         let importedInterfaces = this.importInterfaces(out)
         names.forEach(name => {
             let versions = items.get(name)!
@@ -159,7 +160,7 @@ export class Typegen {
         let names = Array.from(items.keys()).sort()
 
         out.line(`import assert from 'assert'`)
-        out.line(`import {Block, Chain, ChainContext, BlockContext, Result} from './support'`)
+        out.line(`import {Block, Chain, ChainContext, BlockContext, Result, Option} from './support'`)
         let importedInterfaces = this.importInterfaces(out)
         names.forEach(qualifiedName => {
             let versions = items.get(qualifiedName)!
@@ -232,7 +233,7 @@ export class Typegen {
         let names = Array.from(items.keys()).sort()
 
         out.line(`import assert from 'assert'`)
-        out.line(`import {Block, Chain, ChainContext, BlockContext, Result} from './support'`)
+        out.line(`import {Block, Chain, ChainContext, BlockContext, Result, Option} from './support'`)
         let importedInterfaces = this.importInterfaces(out)
         names.forEach(qualifiedName => {
             let versions = items.get(qualifiedName)!
@@ -292,6 +293,11 @@ export class Typegen {
                                 out.line(`assert(this.is${versionName})`)
                                 let query = keyNames.length > 1 ? 'keys' : 'keys.map(k => [k])'
                                 out.line(`return this._chain.queryStorage(${args.concat(query).join(', ')})`)
+                            })
+                            out.line()
+                            out.block(`async getAllAs${versionName}(): Promise<(${qualifiedTypes[qualifiedTypes.length - 1]})[]>`, () => {
+                                out.line(`assert(this.is${versionName})`)
+                                out.line(`return this._chain.queryStorage(${args.join(', ')})`)
                             })
                         }
                     }
@@ -373,7 +379,7 @@ export class Typegen {
                     this.options.typesBundle || getOldTypesBundle(v.specName),
                     `types bundle is required for ${v.specName} chain`
                 )
-                oldTypes = getTypesFromBundle(typesBundle, v.specVersion)
+                oldTypes = getTypesFromBundle(typesBundle, v.specVersion, v.specName)
             }
             let d = getChainDescriptionFromMetadata(metadata, oldTypes)
             return {

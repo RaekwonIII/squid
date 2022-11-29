@@ -1,23 +1,23 @@
-import {ResilientRpcClient} from "@subsquid/rpc-client/lib/resilient"
-import {Codec as ScaleCodec, JsonCodec} from "@subsquid/scale-codec"
+import {ResilientRpcClient} from '@subsquid/rpc-client/lib/resilient'
+import {Codec as ScaleCodec, JsonCodec} from '@subsquid/scale-codec'
 import {
-    ChainDescription, Constant,
+    ChainDescription,
+    Constant,
     decodeMetadata,
     Field,
-    getChainDescriptionFromMetadata, getTypeHash,
+    getChainDescriptionFromMetadata,
+    getTypeHash,
     isPreV14,
     OldTypes,
-    OldTypesBundle,
     QualifiedName,
     StorageItem
-} from "@subsquid/substrate-metadata"
-import * as eac from "@subsquid/substrate-metadata/lib/events-and-calls"
-import {getTypesFromBundle} from "@subsquid/substrate-metadata/lib/old/typesBundle"
-import {getStorageItemTypeHash} from "@subsquid/substrate-metadata/lib/storage"
-import {assertNotNull, unexpectedCase} from "@subsquid/util-internal"
-import assert from "assert"
-import type {SpecId} from "./interfaces/substrate"
-import * as sto from "./util/storage"
+} from '@subsquid/substrate-metadata'
+import * as eac from '@subsquid/substrate-metadata/lib/events-and-calls'
+import {getStorageItemTypeHash} from '@subsquid/substrate-metadata/lib/storage'
+import {assertNotNull, unexpectedCase} from '@subsquid/util-internal'
+import assert from 'assert'
+import type {SpecId} from './interfaces/substrate'
+import * as sto from './util/storage'
 
 
 /**
@@ -42,7 +42,7 @@ interface SpecMetadata {
 export interface ChainManagerOptions {
     archiveRequest<T>(query: string): Promise<T>
     getChainClient: () => ResilientRpcClient
-    getTypesBundle: (meta: SpecMetadata) => OldTypesBundle
+    getTypes: (meta: SpecMetadata) => OldTypes
 }
 
 
@@ -74,8 +74,7 @@ export class ChainManager {
         let metadata = decodeMetadata(meta.hex)
         let types: OldTypes | undefined
         if (isPreV14(metadata)) {
-            let typesBundle = this.options.getTypesBundle(meta)
-            types = getTypesFromBundle(typesBundle, meta.specVersion)
+            types = this.options.getTypes(meta)
         }
         let description = getChainDescriptionFromMetadata(metadata, types)
         return new Chain(description, () => this.options.getChainClient())
@@ -192,13 +191,20 @@ export class Chain {
         return this.decodeStorageValue(item, res)
     }
 
-    async queryStorage(blockHash: string, prefix: string, name: string, keyList: any[][]): Promise<any[]> {
-        if (keyList.length == 0) return []
+    async queryStorage(blockHash: string, prefix: string, name: string, keyList?: any[][]): Promise<any[]> {
         let item = this.getStorageItem(prefix, name)
         let storageHash = sto.getNameHash(prefix) + sto.getNameHash(name).slice(2)
-        let query = keyList.map(keys => {
-            return storageHash + this.getStorageItemKeysHash(item, keys)
-        })
+
+        let query: string[]
+        if (keyList == null) {
+            query = await this.client.call('state_getKeys', [storageHash, blockHash])
+        } else {
+            query = keyList.map(keys => {
+                return storageHash + this.getStorageItemKeysHash(item, keys)
+            })
+        }
+
+        if (query.length == 0) return []
         let res: {changes: [key: string, value: string][]}[] = await this.client.call(
             'state_queryStorageAt',
             [query, blockHash]

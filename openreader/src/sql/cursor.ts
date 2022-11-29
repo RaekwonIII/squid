@@ -72,6 +72,7 @@ export class EntityCursor implements Cursor {
             case "scalar":
                 switch(prop.type.name) {
                     case "BigInt":
+                    case "BigDecimal":
                         return `(${col})::text`
                     case "Bytes":
                         return `'0x' || encode(${col}, 'hex')`
@@ -90,9 +91,9 @@ export class EntityCursor implements Cursor {
                 let itemType = prop.type.item.type
                 switch(itemType.kind) {
                     case "scalar":
-                    case "enum":
                         switch(itemType.name) {
                             case "BigInt":
+                            case "BigDecimal":
                                 return `(${col})::text[]`
                             case "Bytes":
                                 return `array(select '0x' || encode(i, 'hex') from unnest(${col}) as i)`
@@ -154,7 +155,7 @@ export class EntityCursor implements Cursor {
             case "fk":
                 return new EntityCursor(
                     this.ctx,
-                    prop.type.foreignEntity,
+                    prop.type.entity,
                     {on: 'id', rhs: this.native(field)}
                 )
             case "lookup":
@@ -252,6 +253,8 @@ export class ObjectCursor implements Cursor {
                         return `(${this.string(field)})::bool`
                     case 'BigInt':
                         return `(${this.string(field)})::numeric`
+                    case 'BigDecimal':
+                        return `(${this.string(field)})::numeric`
                     case 'Bytes':
                         return `decode(substr(${this.string(field)}, 3), 'hex')`
                     case 'DateTime':
@@ -281,7 +284,7 @@ export class ObjectCursor implements Cursor {
             case "fk":
                 return new EntityCursor(
                     this.ctx,
-                    prop.type.foreignEntity,
+                    prop.type.entity,
                     {on: 'id', rhs: this.string(field)}
                 )
             default:

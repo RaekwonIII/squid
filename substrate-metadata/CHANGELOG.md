@@ -1,6 +1,27 @@
 # Change Log - @subsquid/substrate-metadata
 
-This log was last generated on Wed, 17 Aug 2022 17:33:52 GMT and should not be manually modified.
+This log was last generated on Sun, 06 Nov 2022 18:24:20 GMT and should not be manually modified.
+
+## 2.0.0
+Sun, 06 Nov 2022 18:24:20 GMT
+
+### Breaking changes
+
+- decode `Option<Option<T>>` to `Option<T | undefined>`
+- normalize `U256` structs to `u256` primitives
+- remove enum/struct fields when they all have a unit type
+
+## 1.2.1
+Fri, 28 Oct 2022 12:04:58 GMT
+
+_Version update only_
+
+## 1.2.0
+Fri, 14 Oct 2022 13:59:14 GMT
+
+### Minor changes
+
+- support polkadotjs types bundles
 
 ## 1.1.0
 Wed, 17 Aug 2022 17:33:52 GMT
